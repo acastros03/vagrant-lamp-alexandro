@@ -1,136 +1,168 @@
-💻 Entorno de Desarrollo LAMP Personalizado (Vagrant)
+# 🧱 Pila LAMP en Dos Niveles
 
-Este repositorio contiene la configuración completa de una pila LAMP (Linux, Apache, MySQL/MariaDB, PHP) distribuida en una arquitectura de dos niveles utilizando Vagrant y VirtualBox.
 
-El objetivo principal es separar el Servidor Web/Aplicación del Servidor de Base de Datos para replicar un entorno de producción realista.
+## 📘 Descripción General
+Este proyecto implementa una infraestructura de **dos niveles** utilizando **Vagrant** y **Debian 12 (Bookworm)**. Se despliega una aplicación de gestión de usuarios, separando los servicios web (Apache + PHP) y base de datos (MariaDB) en dos máquinas virtuales.
 
-⚙️ Configuración del Entorno (Alexandro)
+---
 
-El entorno se compone de dos Máquinas Virtuales (VMs) basadas en Debian 12 (Bookworm).
+## 📦 Estructura del Proyecto
 
-Componente
+```
+vagrant-lamp-alexandro/
+├── Vagrantfile
+├── Apache.sh
+├── Mysql.sh
+├── README.md
+└── Imagen/
+    ├── Apache.png
+    └── PhpMyAdmin.png
+```
 
-VM Name (Hostname)
+---
+### 🧩 Arquitectura
 
-IP Privada
+| Máquina            | Rol                     | IP Privada      | Acceso a Internet | Puerto local |
+|------------------|------------------------|----------------|-----------------|--------------|
+| AlexandroApache   | Servidor Web (Apache + PHP) | 192.168.1.5   | ✅ (NAT)         | 8080 → 80   |
+| AlexandroMysql    | Servidor BD (MariaDB + PhpMyAdmin) | 192.168.1.6 | ❌               | 8081 → 80, 3306 → 3306 |
 
-Puertos Expuestos (Host -> VM)
+---
 
-Scripts de Provisionamiento
+## ⚙️ Vagrantfile
+```ruby
+Vagrant.configure("2") do |config|
 
-Nivel Web/App
+  # Servidor Apache
+  config.vm.define "AlexandroApache" do |apache|
+    apache.vm.box = "debian/bookworm64"
+    apache.vm.hostname = "AlexandroApache"
 
-AlexandroApache
+    # Red privada compartida
+    apache.vm.network "private_network", ip: "192.168.1.5"
 
-192.168.1.5
+    # Reenvio de puertos
+    apache.vm.network "forwarded_port", guest: 80, host: 8080
 
-8080 (HTTP)
+    # Aprovisionamiento automatico
+    apache.vm.provision "shell", path: "Apache.sh"
+  end
 
-Apache.sh
+  # Servidor MySQL 
+  config.vm.define "AlexandroMysql" do |mysql|
+    mysql.vm.box = "debian/bookworm64"
+    mysql.vm.hostname = "AlexandroMysql"
 
-Nivel Base de Datos
+    # Red privada compartida
+    mysql.vm.network "private_network", ip: "192.168.1.6"
 
-AlexandroMysql
+    # Reenvio opcional
+    mysql.vm.network "forwarded_port", guest: 80, host: 8081
 
-192.168.1.6
+    # Acceso remoto MySQL desde host
+    mysql.vm.network "forwarded_port", guest: 3306, host: 3306
 
-8081 (phpMyAdmin) y 3306 (MySQL)
+    # Aprovisionamiento automatico
+    mysql.vm.provision "shell", path: "Mysql.sh"
+  end
 
-Mysql.sh
+```
 
-Credenciales de Base de Datos
+---
 
-Detalle
+## 🖥️ Scripts de Aprovisionamiento
 
-Valor
+### 🔹 Apache.sh
+```bash
+# Actualizar sistema
+apt update -y
 
-Usuario BD
+# Instalar Apache y PHP
+apt install -y apache2 php libapache2-mod-php php-mysql unzip wget git
 
-alexandro
+# Limpiar contenido previo
+rm -rf /var/www/html/*
 
-Contraseña BD
+# Descargar la aplicacion de ejemplo (gestion de usuarios)
+cd /var/www/html
+git clone https://github.com/iesalbarregas/gestion-usuarios.git app
+mv app/* .
+rm -rf app
 
-alexandro
+# Asignar permisos
+chown -R www-data:www-data /var/www/html
+chmod -R 755 /var/www/html
 
-Base de Datos
+# Reiniciar Apache
+systemctl restart apache2
 
-gestion_usuarios
+```
 
-▶️ Instrucciones de Despliegue
+### 🔹 Mysql.sh
+```bash
+# Actualizar repositorios
+apt update -y
 
-Sigue estos pasos en tu máquina real (host) para levantar el entorno:
+# Instalar Apache, PHP, MariaDB y extensiones necesarias
+apt install -y apache2 php libapache2-mod-php mariadb-server php-mysql php-mbstring php-zip php-gd php-json php-curl unzip wget
 
-1. Requisitos Previos
+# Habilitar y arrancar servicios
+systemctl enable apache2
+systemctl start apache2
+systemctl enable mariadb
+systemctl start mariadb
 
-Asegúrate de tener instalados los siguientes programas:
+# Crear base de datos y usuario en MariaDB
+mysql -u root <<EOF
+CREATE DATABASE IF NOT EXISTS gestion_usuarios;
+CREATE USER IF NOT EXISTS 'alexandro'@'%' IDENTIFIED BY 'alexandro';
+GRANT ALL PRIVILEGES ON gestion_usuarios.* TO 'alexandro'@'%';
+FLUSH PRIVILEGES;
+EOF
 
-Vagrant
+# Permitir conexiones remotas a MariaDB (desde la VM Apache)
+sed -i "s/^bind-address.*/bind-address = 0.0.0.0/" /etc/mysql/mariadb.conf.d/50-server.cnf
+systemctl restart mariadb
 
-VirtualBox
+# Preconfigurar phpMyAdmin para instalacion silenciosa
+echo "phpmyadmin phpmyadmin/dbconfig-install boolean false" | debconf-set-selections
+echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect apache2" | debconf-set-selections
 
-Git
+# Instalar phpMyAdmin sin interaccion
+apt install -y phpmyadmin
 
-2. Clonar el Repositorio
+# Habilitar extensiones PHP necesarias
+phpenmod mbstring
+systemctl restart apache2
 
-Abre tu terminal en la carpeta donde guardas tus proyectos y clona este repositorio:
+# Permitir acceso remoto a phpMyAdmin (opcional)
+sed -i 's/Require local/Require all granted/' /etc/apache2/conf-available/phpmyadmin.conf
+systemctl restart apache2
 
-git clone [https://github.com/TU_USUARIO/NOMBRE_DEL_REPOSITORIO.git](https://github.com/TU_USUARIO/NOMBRE_DEL_REPOSITORIO.git)
-cd NOMBRE_DEL_REPOSITORIO
+echo "Instalacion completada. Accede a phpMyAdmin en: http://localhost:8081/phpmyadmin"
+```
 
+---
 
-3. Levantar las Máquinas Virtuales
+## 🌐 Accesos
+- **Apache:** http://localhost:8080
+- **MariaDB / phpMyAdmin:** http://localhost:8081/phpmyadmin
+- **Usuario DB:** `alexandro`  
+- **Contraseña DB:** `alexandro`
+---
 
-Ejecuta el comando principal de Vagrant. Esto iniciará las VMs y ejecutará la configuración automática:
+## 📸 Comprobacion
+- Apache
+  
+ ![Apache funcionando](Imagen/Apache.png)
 
-vagrant up
+- PhpMyAdmin
 
+ ![PhpMyAdmin funcionando](Imagen/PhpMyAdmin.png)
 
-(El proceso de provisonamiento puede tardar varios minutos la primera vez.)
+ - Video
 
-4. Acceder a los Servicios
+  [Ver video en Google Drive](https://drive.google.com/file/d/1fe8vetvKCYnkI0j7P0l-yU1Yo8AcpSjB/view?usp=drive_link)
 
-Una vez que el proceso termine, podrás acceder a los servicios desde tu navegador utilizando el reenvío de puertos:
 
-Servicio
 
-URL de Acceso
-
-Credenciales para Login
-
-Aplicación Web
-
-http://localhost:8080
-
-N/A
-
-phpMyAdmin
-
-http://localhost:8081/phpmyadmin
-
-Usuario: alexandro / Contraseña: alexandro
-
-🛠️ Detalle de Scripts
-
-Script
-
-Propósito
-
-Tareas Principales
-
-Vagrantfile
-
-Define la arquitectura de dos VMs.
-
-Configura IP, puertos y asocia scripts de provisionamiento.
-
-Apache.sh
-
-Provisiona el Servidor Web.
-
-Instala Apache/PHP, descarga la aplicación web y asigna permisos.
-
-Mysql.sh
-
-Provisiona el Servidor de BD.
-
-Instala MariaDB/phpMyAdmin, crea el usuario alexandro y la BD gestion_usuarios.
