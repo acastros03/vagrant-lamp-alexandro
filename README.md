@@ -162,7 +162,8 @@ echo "Instalacion completada. Accede a phpMyAdmin en: http://localhost:8081/phpm
 
  - Video
 
-  [Ver video en Google Drive](https://drive.google.com/file/d/1fe8vetvKCYnkI0j7P0l-yU1Yo8AcpSjB/view?usp=drive_link)
+    <a href="https://drive.google.com/file/d/1fe8vetvKCYnkI0j7P0l-yU1Yo8AcpSjB/view?usp=drive_link" target="_blank">Ver video en Google Drive</a>
+
 
 
 
